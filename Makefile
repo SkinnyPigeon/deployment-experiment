@@ -1,9 +1,10 @@
-.PHONY: test test-local test-debug test-amd64-simple test-python-image lint style type-check test-only lint-local style-local type-check-local signoff status help docker-check clean
+.PHONY: test test-local test-debug test-amd64-simple test-python-image lint style type-check test-only lint-local style-local type-check-local signoff status help clean
 
 # Configuration
 DOCKER_REGISTRY ?= docker.io
 DOCKER_SOCKET = unix://$(HOME)/.rd/docker.sock
 ARCH = linux/amd64
+SUMMARY ?= false
 
 # Default target
 help:
@@ -32,14 +33,29 @@ help:
 	@echo "Configuration:"
 	@echo "  ARCH           - Container architecture (default: linux/amd64)"
 	@echo "  DOCKER_REGISTRY - Docker registry to use (default: docker.io)"
-	@echo "  Example: make test ARCH=linux/arm64 DOCKER_REGISTRY=your-registry.com"
+	@echo "  SUMMARY        - Show clean summary instead of verbose output (default: false)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make test ARCH=linux/arm64              # Run all tests with ARM64"
+	@echo "  make test SUMMARY=true                  # Run with clean summary output"
+	@echo "  make style ARCH=linux/arm64 SUMMARY=true # Style check with summary"
+	@echo ""
+	@echo "Output modes:"
+	@echo "  Default (SUMMARY=false) - Shows full verbose act output for debugging"
+	@echo "  Summary (SUMMARY=true)  - Shows clean summary with just pass/fail status"
+	@echo "  Debug (test-debug)      - Shows maximum verbosity with debug info"
 	@echo ""
 	@echo "Architecture Notes:"
-	@echo "  - linux/arm64: Uses Python setup actions (faster on Apple Silicon)"
+	@echo "  - linux/arm64: Uses Python setup actions (local testing)"
 	@echo "  - linux/amd64: Uses Python containers (production-like, slower on Apple Silicon)"
 	@echo "  - The workflow automatically adapts based on the ARCH setting"
 	@echo "  - On GitHub Actions, it defaults to linux/amd64 (production environment)"
 
+# Clean up act containers
+clean:
+	@echo "🧹 Cleaning up act containers..."
+	@docker ps -a --filter "name=act-" --format "{{.Names}}" | xargs -r docker rm -f 2>/dev/null || true
+	@echo "✅ Cleanup complete"
 
 # Local development targets (faster, no Docker)
 lint-local:
@@ -62,69 +78,94 @@ type-check-local:
 	@echo "🔍 Type checking with mypy..."
 	mypy --ignore-missing-imports *.py
 
+test-local:
+	@echo "Running tests locally with pytest..."
+	python -m pytest test_trie.py -v
+
 all-local: lint-local style-local type-check-local test-local
 	@echo "✅ All local checks completed!"
 
-# Run all jobs with specified architecture
-test: clean
-	@echo "Running all GitHub Actions jobs..."
+# Helper function to run act and capture results with summary
+define run_act_with_summary
+	@echo "🚀 Running $(1)..."
 	@echo "Using Docker registry: $(DOCKER_REGISTRY)"
 	@echo "Using architecture: $(ARCH)"
 	@if [ "$(ARCH)" = "linux/amd64" ]; then \
 		echo "Note: Using Python containers for AMD64 (production-like)"; \
 	else \
-		echo "Note: Using Python setup actions for $(ARCH) (faster on Apple Silicon)"; \
+		echo "Note: Using Python setup actions for $(ARCH) (local testing)"; \
 	fi
-	DOCKER_HOST=$(DOCKER_SOCKET) act workflow_dispatch \
-		--container-architecture $(ARCH) \
-		--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-latest \
-		--input target_arch=$(ARCH)
+	@if [ "$(SUMMARY)" = "true" ]; then \
+		echo ""; \
+		echo "📋 Summary will be shown at the end..."; \
+		echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
+		TEMP_LOG=$$(mktemp); \
+		if DOCKER_HOST=$(DOCKER_SOCKET) act workflow_dispatch \
+			--container-architecture $(ARCH) \
+			--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-latest \
+			--input target_arch=$(ARCH) \
+			$(2) > $$TEMP_LOG 2>&1; then \
+			echo ""; \
+			echo "🎉 SUCCESS: All jobs completed successfully!"; \
+			echo ""; \
+			echo "📊 SUMMARY:"; \
+			echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
+			if grep -q "🏁.*succeeded" $$TEMP_LOG; then \
+				grep "🏁.*succeeded" $$TEMP_LOG | sed 's/.*\[Run Tests\/\([^]]*\)\].*/✅ \1 job succeeded/'; \
+			else \
+				echo "✅ All jobs succeeded"; \
+			fi; \
+			echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
+		else \
+			echo ""; \
+			echo "❌ FAILURE: Some jobs failed!"; \
+			echo ""; \
+			echo "📊 SUMMARY:"; \
+			echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
+			if grep -q "🏁.*succeeded" $$TEMP_LOG; then \
+				grep "🏁.*succeeded" $$TEMP_LOG | sed 's/.*\[Run Tests\/\([^]]*\)\].*/✅ \1 job succeeded/'; \
+			fi; \
+			if grep -q "🏁.*failed" $$TEMP_LOG; then \
+				grep "🏁.*failed" $$TEMP_LOG | sed 's/.*\[Run Tests\/\([^]]*\)\].*/❌ \1 job failed/'; \
+			fi; \
+			echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"; \
+			echo ""; \
+			echo "🔍 For detailed logs, run with 'make test-debug' or 'make $(lastword $(MAKECMDGOALS)) SUMMARY=false'"; \
+			rm -f $$TEMP_LOG; \
+			exit 1; \
+		fi; \
+		rm -f $$TEMP_LOG; \
+	else \
+		echo ""; \
+		DOCKER_HOST=$(DOCKER_SOCKET) act workflow_dispatch \
+			--container-architecture $(ARCH) \
+			--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-latest \
+			--input target_arch=$(ARCH) \
+			$(2); \
+	fi
+endef
+
+# Run all jobs with specified architecture
+test: clean
+	$(call run_act_with_summary,all GitHub Actions jobs,)
 
 # Run only linting job
 lint: clean
-	@echo "Running linting checks with act..."
-	@echo "Using Docker registry: $(DOCKER_REGISTRY)"
-	@echo "Using architecture: $(ARCH)"
-	DOCKER_HOST=$(DOCKER_SOCKET) act workflow_dispatch \
-		--container-architecture $(ARCH) \
-		--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-latest \
-		--input target_arch=$(ARCH) \
-		--job lint
+	$(call run_act_with_summary,linting checks,--job lint)
 
 # Run only style checking job
 style: clean
-	@echo "Running style checks with act..."
-	@echo "Using Docker registry: $(DOCKER_REGISTRY)"
-	@echo "Using architecture: $(ARCH)"
-	DOCKER_HOST=$(DOCKER_SOCKET) act workflow_dispatch \
-		--container-architecture $(ARCH) \
-		--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-latest \
-		--input target_arch=$(ARCH) \
-		--job style
+	$(call run_act_with_summary,style checks,--job style)
 
 # Run only type checking job
 type-check: clean
-	@echo "Running type checks with act..."
-	@echo "Using Docker registry: $(DOCKER_REGISTRY)"
-	@echo "Using architecture: $(ARCH)"
-	DOCKER_HOST=$(DOCKER_SOCKET) act workflow_dispatch \
-		--container-architecture $(ARCH) \
-		--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-latest \
-		--input target_arch=$(ARCH) \
-		--job type-check
+	$(call run_act_with_summary,type checks,--job type-check)
 
 # Run only unit tests job
 test-only: clean
-	@echo "Running unit tests with act..."
-	@echo "Using Docker registry: $(DOCKER_REGISTRY)"
-	@echo "Using architecture: $(ARCH)"
-	DOCKER_HOST=$(DOCKER_SOCKET) act workflow_dispatch \
-		--container-architecture $(ARCH) \
-		--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-latest \
-		--input target_arch=$(ARCH) \
-		--job test
+	$(call run_act_with_summary,unit tests,--job test)
 
-# Run tests with verbose debugging output
+# Run tests with verbose debugging output (no summary)
 test-debug: clean
 	@echo "Running GitHub Actions locally with act (DEBUG MODE)..."
 	@echo "Using Docker registry: $(DOCKER_REGISTRY)"
@@ -135,30 +176,6 @@ test-debug: clean
 		--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-latest \
 		--input target_arch=$(ARCH)
 
-# Test AMD64 compatibility with a simpler container that has Python pre-installed
-test-amd64-simple: clean
-	@echo "Testing AMD64 compatibility with pre-installed Python..."
-	@echo "Using Docker registry: $(DOCKER_REGISTRY)"
-	@echo "Note: This uses a container with Python already installed to avoid setup issues"
-	DOCKER_HOST=$(DOCKER_SOCKET) act \
-		--container-architecture linux/amd64 \
-		--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-22.04
-
-# Test using official Python image with simplified workflow
-test-python-image: clean
-	@echo "Testing with official Python image and simplified workflow..."
-	@echo "Using Docker registry: $(DOCKER_REGISTRY)"
-	@echo "Using architecture: $(ARCH)"
-	@echo "Note: This uses python:3.12-slim image with a workflow that skips Python setup"
-	DOCKER_HOST=$(DOCKER_SOCKET) act \
-		--container-architecture $(ARCH) \
-		--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-latest \
-		--workflows .github/workflows/test.yml
-
-# Run tests directly with pytest (faster for development)
-test-local:
-	@echo "Running tests locally with pytest..."
-	python -m pytest test_trie.py -v
 
 # Sign off on all checks (marks them as successful for PR merging)
 signoff:
