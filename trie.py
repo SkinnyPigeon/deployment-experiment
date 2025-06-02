@@ -5,14 +5,18 @@ It is used to store a dynamic set or associative array where the keys are usuall
 
 # This is a trie data structure implementation in Python
 
+
+# pylint: disable=too-few-public-methods
 class TrieNode:
     """
     TrieNode is a node in the trie data structure.
-    It contains a dictionary of children nodes and a boolean flag to indicate if the node is the end of a word.
+    It contains a dictionary of children nodes and a boolean
+    flag to indicate if the node is the end of a word.
     """
     def __init__(self):
         self.children = {}
         self.is_end_of_word = False
+
 
 class Trie:
     """
@@ -23,6 +27,9 @@ class Trie:
         self.root = TrieNode()
 
     def insert(self, word):
+        """
+        Insert a word into the trie
+        """
         node = self.root
         for char in word:
             if char not in node.children:
@@ -31,6 +38,9 @@ class Trie:
         node.is_end_of_word = True
 
     def search(self, word):
+        """
+        Search for a word in the trie
+        """
         node = self.root
         for char in word:
             if char not in node.children:
@@ -39,6 +49,9 @@ class Trie:
         return node.is_end_of_word
 
     def starts_with(self, prefix):
+        """
+        Check if the trie starts with a given prefix
+        """
         node = self.root
         for char in prefix:
             if char not in node.children:
