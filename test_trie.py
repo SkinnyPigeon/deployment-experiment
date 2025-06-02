@@ -5,7 +5,7 @@ Test the Trie data structure
 from trie import Trie
 
 
-def test_trie():
+def test_trie() -> None:
     """
     Test the Trie data structure
     """

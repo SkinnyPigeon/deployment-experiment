@@ -1,4 +1,4 @@
-.PHONY: test test-local test-debug test-amd64-simple test-python-image test-amd64 lint style type-check test-only lint-local style-local type-check-local signoff status help docker-check clean
+.PHONY: test test-local test-debug test-amd64-simple test-python-image lint style type-check test-only lint-local style-local type-check-local signoff status help docker-check clean
 
 # Configuration
 DOCKER_REGISTRY ?= docker.io
@@ -8,8 +8,7 @@ ARCH = linux/amd64
 # Default target
 help:
 	@echo "Available commands:"
-	@echo "  test            - Run all jobs (lint, style, type-check, test)"
-	@echo "  test-amd64      - Run AMD64-specific workflow (uses Python containers)"
+	@echo "  test            - Run all jobs with specified architecture"
 	@echo "  lint            - Run only linting checks"
 	@echo "  style           - Run only style checks"
 	@echo "  type-check      - Run only type checking"
@@ -28,30 +27,19 @@ help:
 	@echo "  clean           - Clean up act containers"
 	@echo "  signoff         - Sign off on all checks (marks them as successful)"
 	@echo "  status          - Check signoff status"
-	@echo "  docker-check    - Check if Docker is running"
 	@echo "  help            - Show this help message"
 	@echo ""
 	@echo "Configuration:"
-	@echo "  DOCKER_REGISTRY - Docker registry to use (default: docker.io)"
 	@echo "  ARCH           - Container architecture (default: linux/amd64)"
-	@echo "  Example: make test DOCKER_REGISTRY=your-registry.com ARCH=linux/arm64"
+	@echo "  DOCKER_REGISTRY - Docker registry to use (default: docker.io)"
+	@echo "  Example: make test ARCH=linux/arm64 DOCKER_REGISTRY=your-registry.com"
 	@echo ""
 	@echo "Architecture Notes:"
-	@echo "  - linux/arm64 works best on Apple Silicon Macs"
-	@echo "  - linux/amd64 emulation may have issues with Python setup actions"
-	@echo "  - Use test-amd64 for AMD64 testing with Python containers (production-like)"
+	@echo "  - linux/arm64: Uses Python setup actions (faster on Apple Silicon)"
+	@echo "  - linux/amd64: Uses Python containers (production-like, slower on Apple Silicon)"
+	@echo "  - The workflow automatically adapts based on the ARCH setting"
+	@echo "  - On GitHub Actions, it defaults to linux/amd64 (production environment)"
 
-# Check if Docker is running
-docker-check:
-	@echo "Checking Docker connection..."
-	@docker ps > /dev/null 2>&1 || (echo "❌ Docker is not running. Please start Docker/Rancher Desktop." && exit 1)
-	@echo "✅ Docker is running"
-
-# Clean up act containers
-clean: docker-check
-	@echo "Cleaning up act containers..."
-	@docker ps -a --filter "name=act-" --format "{{.Names}}" | xargs -r docker rm -f || true
-	@echo "✅ Cleanup complete"
 
 # Local development targets (faster, no Docker)
 lint-local:
@@ -77,33 +65,30 @@ type-check-local:
 all-local: lint-local style-local type-check-local test-local
 	@echo "✅ All local checks completed!"
 
-# Run AMD64-specific workflow (uses Python containers, production-like)
-test-amd64: clean
-	@echo "Running AMD64-specific workflow with Python containers..."
-	@echo "Using Docker registry: $(DOCKER_REGISTRY)"
-	@echo "Note: This uses python:3.12-slim containers to avoid Python setup issues on AMD64"
-	DOCKER_HOST=$(DOCKER_SOCKET) act \
-		--container-architecture linux/amd64 \
-		--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-latest \
-		--workflows .github/workflows/test-amd64.yml
-
-# Run all jobs (lint, style, type-check, test)
+# Run all jobs with specified architecture
 test: clean
-	@echo "Running all GitHub Actions jobs locally with act..."
+	@echo "Running all GitHub Actions jobs..."
 	@echo "Using Docker registry: $(DOCKER_REGISTRY)"
 	@echo "Using architecture: $(ARCH)"
-	DOCKER_HOST=$(DOCKER_SOCKET) act \
+	@if [ "$(ARCH)" = "linux/amd64" ]; then \
+		echo "Note: Using Python containers for AMD64 (production-like)"; \
+	else \
+		echo "Note: Using Python setup actions for $(ARCH) (faster on Apple Silicon)"; \
+	fi
+	DOCKER_HOST=$(DOCKER_SOCKET) act workflow_dispatch \
 		--container-architecture $(ARCH) \
-		--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-latest
+		--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-latest \
+		--input target_arch=$(ARCH)
 
 # Run only linting job
 lint: clean
 	@echo "Running linting checks with act..."
 	@echo "Using Docker registry: $(DOCKER_REGISTRY)"
 	@echo "Using architecture: $(ARCH)"
-	DOCKER_HOST=$(DOCKER_SOCKET) act \
+	DOCKER_HOST=$(DOCKER_SOCKET) act workflow_dispatch \
 		--container-architecture $(ARCH) \
 		--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-latest \
+		--input target_arch=$(ARCH) \
 		--job lint
 
 # Run only style checking job
@@ -111,9 +96,10 @@ style: clean
 	@echo "Running style checks with act..."
 	@echo "Using Docker registry: $(DOCKER_REGISTRY)"
 	@echo "Using architecture: $(ARCH)"
-	DOCKER_HOST=$(DOCKER_SOCKET) act \
+	DOCKER_HOST=$(DOCKER_SOCKET) act workflow_dispatch \
 		--container-architecture $(ARCH) \
 		--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-latest \
+		--input target_arch=$(ARCH) \
 		--job style
 
 # Run only type checking job
@@ -121,9 +107,10 @@ type-check: clean
 	@echo "Running type checks with act..."
 	@echo "Using Docker registry: $(DOCKER_REGISTRY)"
 	@echo "Using architecture: $(ARCH)"
-	DOCKER_HOST=$(DOCKER_SOCKET) act \
+	DOCKER_HOST=$(DOCKER_SOCKET) act workflow_dispatch \
 		--container-architecture $(ARCH) \
 		--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-latest \
+		--input target_arch=$(ARCH) \
 		--job type-check
 
 # Run only unit tests job
@@ -131,9 +118,10 @@ test-only: clean
 	@echo "Running unit tests with act..."
 	@echo "Using Docker registry: $(DOCKER_REGISTRY)"
 	@echo "Using architecture: $(ARCH)"
-	DOCKER_HOST=$(DOCKER_SOCKET) act \
+	DOCKER_HOST=$(DOCKER_SOCKET) act workflow_dispatch \
 		--container-architecture $(ARCH) \
 		--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-latest \
+		--input target_arch=$(ARCH) \
 		--job test
 
 # Run tests with verbose debugging output
@@ -141,10 +129,11 @@ test-debug: clean
 	@echo "Running GitHub Actions locally with act (DEBUG MODE)..."
 	@echo "Using Docker registry: $(DOCKER_REGISTRY)"
 	@echo "Using architecture: $(ARCH)"
-	DOCKER_HOST=$(DOCKER_SOCKET) act \
+	DOCKER_HOST=$(DOCKER_SOCKET) act workflow_dispatch \
 		--verbose \
 		--container-architecture $(ARCH) \
-		--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-latest
+		--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-latest \
+		--input target_arch=$(ARCH)
 
 # Test AMD64 compatibility with a simpler container that has Python pre-installed
 test-amd64-simple: clean
