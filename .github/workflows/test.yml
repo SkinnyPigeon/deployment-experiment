@@ -3,8 +3,6 @@ name: Simple Tests
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ develop ]
   workflow_dispatch:
     inputs:
       target_arch:
