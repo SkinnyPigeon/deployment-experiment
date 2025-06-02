@@ -220,11 +220,11 @@ signoff-type-check:
 	$(call do_signoff,type-check,🔍,type checking,type-check,Type checking)
 
 # Sign off on unit tests
-signoff-test:
-	$(call do_signoff,test,🧪,unit tests,test-only,Unit tests)
+signoff-unit-tests:
+	$(call do_signoff,unit-tests,🧪,unit tests,test-only,Unit tests)
 
 # Sign off on all checks (convenience command)
-signoff-all: signoff-lint signoff-style signoff-type-check signoff-test
+signoff-all: signoff-lint signoff-style signoff-type-check signoff-unit-tests
 	@echo ""
 	@echo "🎉 All checks signed off successfully!"
 	@echo "Your PR should now be ready for merging."
