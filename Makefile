@@ -1,4 +1,4 @@
-.PHONY: test test-local test-debug test-amd64-simple test-python-image lint style type-check test-only lint-local style-local type-check-local signoff status help clean
+.PHONY: test test-local test-debug test-amd64-simple test-python-image lint style type-check test-only lint-local style-local type-check-local signoff signoff-lint signoff-style signoff-type-check signoff-test signoff-all status help clean
 
 # Configuration
 DOCKER_REGISTRY ?= docker.io
@@ -25,9 +25,15 @@ help:
 	@echo "  type-check-local- Run type checking locally"
 	@echo "  all-local       - Run all checks locally"
 	@echo ""
+	@echo "Sign-off commands (for PR merging):"
+	@echo "  signoff-lint       - Sign off on linting checks (requires AMD64 confirmation)"
+	@echo "  signoff-style      - Sign off on style checks (requires AMD64 confirmation)"
+	@echo "  signoff-type-check - Sign off on type checking (requires AMD64 confirmation)"
+	@echo "  signoff-test       - Sign off on unit tests (requires AMD64 confirmation)"
+	@echo "  signoff-all        - Sign off on all checks"
+	@echo "  status             - Check current signoff status"
+	@echo ""
 	@echo "  clean           - Clean up act containers"
-	@echo "  signoff         - Sign off on all checks (marks them as successful)"
-	@echo "  status          - Check signoff status"
 	@echo "  help            - Show this help message"
 	@echo ""
 	@echo "Configuration:"
@@ -176,11 +182,53 @@ test-debug: clean
 		--platform ubuntu-latest=$(DOCKER_REGISTRY)/catthehacker/ubuntu:act-latest \
 		--input target_arch=$(ARCH)
 
+# Generic signoff function
+define do_signoff
+	@echo "$(2) $(1) Sign-off"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "This will mark $(3) as successful for PR merging."
+	@echo ""
+	@echo "⚠️  IMPORTANT: You should run $(3) on AMD64 (production architecture) before signing off:"
+	@echo "   make $(4) ARCH=linux/amd64"
+	@echo ""
+	@read -p "Have you successfully run $(3) on linux/amd64? Type 'yes' to confirm: " confirm; \
+	if [ "$$confirm" = "yes" ]; then \
+		echo "✅ Signing off on $(3)..."; \
+		if gh signoff $(1); then \
+			echo "🎉 $(5) signed off successfully!"; \
+		else \
+			echo "❌ Failed to sign off on $(3)."; \
+			echo "Make sure gh-signoff extension is installed: gh extension install basecamp/gh-signoff"; \
+			exit 1; \
+		fi; \
+	else \
+		echo "❌ Sign-off cancelled. Please run $(3) on AMD64 first."; \
+		exit 1; \
+	fi
+endef
 
-# Sign off on all checks (marks them as successful for PR merging)
-signoff:
-	@echo "Signing off on all checks..."
-	gh signoff
+# Sign off on linting checks
+signoff-lint:
+	$(call do_signoff,lint,🔍,linting checks,lint,Linting checks)
+
+# Sign off on style checks
+signoff-style:
+	$(call do_signoff,style,🎨,style checks,style,Style checks)
+
+# Sign off on type checking
+signoff-type-check:
+	$(call do_signoff,type-check,🔍,type checking,type-check,Type checking)
+
+# Sign off on unit tests
+signoff-test:
+	$(call do_signoff,test,🧪,unit tests,test-only,Unit tests)
+
+# Sign off on all checks (convenience command)
+signoff-all: signoff-lint signoff-style signoff-type-check signoff-test
+	@echo ""
+	@echo "🎉 All checks signed off successfully!"
+	@echo "Your PR should now be ready for merging."
+
 
 # Check the current signoff status
 status:
