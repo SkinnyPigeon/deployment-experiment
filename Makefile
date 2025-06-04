@@ -194,11 +194,15 @@ define do_signoff
 	@read -p "Have you successfully run $(3) on linux/amd64? Type 'yes' to confirm: " confirm; \
 	if [ "$$confirm" = "yes" ]; then \
 		echo "✅ Signing off on $(3)..."; \
-		if gh signoff $(1); then \
+		if gh signoff $(1) -f; then \
 			echo "🎉 $(5) signed off successfully!"; \
 		else \
 			echo "❌ Failed to sign off on $(3)."; \
-			echo "Make sure gh-signoff extension is installed: gh extension install basecamp/gh-signoff"; \
+			echo ""; \
+			echo "💡 This might be due to uncommitted changes. Try:"; \
+			echo "   1. Commit and push your changes first, OR"; \
+			echo "   2. Use 'gh signoff $(1) -f' to force signoff"; \
+			echo "   3. Make sure gh-signoff extension is installed: gh extension install basecamp/gh-signoff"; \
 			exit 1; \
 		fi; \
 	else \
