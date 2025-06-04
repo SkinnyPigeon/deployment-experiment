@@ -32,7 +32,7 @@ class Trie:
         """
         Return a string representation of the trie
         """
-        return f"hell, I am a trie"
+        return "hell, I am a trie"
 
     def insert(self, word: str) -> None:
         """
