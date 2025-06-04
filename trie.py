@@ -28,6 +28,12 @@ class Trie:
     def __init__(self) -> None:
         self.root = TrieNode()
 
+    def __str__(self) -> str:
+        """
+        Return a string representation of the trie
+        """
+        return "hell, I am a trie"
+
     def insert(self, word: str) -> None:
         """
         Insert a word into the trie
