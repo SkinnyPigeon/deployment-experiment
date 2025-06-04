@@ -18,3 +18,11 @@ def test_trie() -> None:
     assert trie.starts_with("app") is True
     assert trie.starts_with("ap") is True
     assert trie.starts_with("a") is True
+
+
+def test_trie_str() -> None:
+    """
+    Test the string representation of the trie
+    """
+    trie = Trie()
+    assert "hell, I am a trie" in str(trie)
